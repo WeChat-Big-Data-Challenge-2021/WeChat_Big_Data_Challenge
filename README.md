@@ -60,8 +60,8 @@
 
 |stage  |weight_uauc |read_comment|like|click_avatar|forward| 
 |:---- |:----  |:----  |:----  |:----  |:----|
-| 离线  | 0.656846 |0.629331 |0.632279  |0.729599 |0.695104 | 
-| 在线  | 0.606319| 0.570577 |0.591993  |0.683528  |0.637842 | 
+| 离线  | 0.657003 |0.626822 |0.633864  |0.735366 |0.690416 | 
+| 在线  | 0.607908| 0.577496 |0.588645  |0.682383  |0.638398 | 
    
 ## **7. 相关文献**
 * Cheng, Heng-Tze, et al. "Wide & deep learning for recommender systems." Proceedings of the 1st workshop on deep learning for recommender systems. 2016.
