@@ -10,12 +10,14 @@ import pandas as pd
 
 # 存储数据的根目录
 ROOT_PATH = "./data"
+# 比赛数据集路径
+DATASET_PATH = os.path.join(ROOT_PATH, "wechat_algo_data1")
 # 训练集
-USER_ACTION = "wechat_algo_data1/user_action.csv"
-FEED_INFO = "wechat_algo_data1/feed_info.csv"
-FEED_EMBEDDINGS = "wechat_algo_data1/feed_embeddings.csv"
+USER_ACTION = os.path.join(DATASET_PATH, "user_action.csv")
+FEED_INFO = os.path.join(DATASET_PATH, "feed_info.csv")
+FEED_EMBEDDINGS = os.path.join(DATASET_PATH, "feed_embeddings.csv")
 # 测试集
-TEST_FILE = "wechat_algo_data1/test_a.csv"
+TEST_FILE = os.path.join(DATASET_PATH, "test_a.csv")
 END_DAY = 15
 SEED = 2021
 
@@ -55,13 +57,12 @@ def check_file():
     '''
     检查数据文件是否存在
     '''
-    files = [USER_ACTION, FEED_INFO, TEST_FILE]
+    paths = [USER_ACTION, FEED_INFO, TEST_FILE]
     flag = True
     not_exist_file = []
-    for f in files:
-        path_f = os.path.join(ROOT_PATH, f)
-        if not os.path.exists(path_f):
-            not_exist_file.append(path_f)
+    for f in paths:
+        if not os.path.exists(f):
+            not_exist_file.append(f)
             flag = False
     return flag, not_exist_file
 
@@ -70,12 +71,11 @@ def statis_data():
     """
     统计特征最大，最小，均值
     """
-    file_name = [USER_ACTION, FEED_INFO, TEST_FILE]
+    paths = [USER_ACTION, FEED_INFO, TEST_FILE]
     pd.set_option('display.max_columns', None)
-    for f in file_name:
-        path = os.path.join(ROOT_PATH, f)
+    for path in paths:
         df = pd.read_csv(path)
-        print(f + " statis: ")
+        print(path + " statis: ")
         print(df.describe())
         print('Distinct count:')
         print(df.nunique())
@@ -88,8 +88,7 @@ def statis_feature(start_day=1, before_day=7, agg='sum'):
     :param before_day: Int. 时间范围（天数）
     :param agg: String. 统计方法
     """
-    history_path = os.path.join(ROOT_PATH, USER_ACTION)
-    history_data = pd.read_csv(history_path)[["userid", "date_", "feedid"] + FEA_COLUMN_LIST]
+    history_data = pd.read_csv(USER_ACTION)[["userid", "date_", "feedid"] + FEA_COLUMN_LIST]
     feature_dir = os.path.join(ROOT_PATH, "feature")
     for dim in ["userid", "feedid"]:
         print(dim)
@@ -116,9 +115,9 @@ def generate_sample(stage="offline_train"):
     """
     day = STAGE_END_DAY[stage]
     if stage == "submit":
-        sample_path = os.path.join(ROOT_PATH, TEST_FILE)
+        sample_path = TEST_FILE
     else:
-        sample_path = os.path.join(ROOT_PATH, USER_ACTION)
+        sample_path = USER_ACTION
     stage_dir = os.path.join(ROOT_PATH, stage)
     df = pd.read_csv(sample_path)
     df_arr = []
@@ -140,9 +139,8 @@ def generate_sample(stage="offline_train"):
     else:
         # 线下/线上训练
         # 同行为取按时间最近的样本
-        df = df.sort_values(['timestamp_'], ascending=False)  # 按时间戳排序
         for action in ACTION_LIST:
-            df = df.drop_duplicates(subset=['userid', 'feedid', action])
+            df = df.drop_duplicates(subset=['userid', 'feedid', action], keep='last')
         # 负样本下采样
         for action in ACTION_LIST:
             action_df = df[(df["date_"] <= day) & (df["date_"] >= day - ACTION_DAY_NUM[action] + 1)]
@@ -165,8 +163,7 @@ def concat_sample(sample_arr, stage="offline_train"):
     """
     day = STAGE_END_DAY[stage]
     # feed信息表
-    feed_info_path = os.path.join(ROOT_PATH, FEED_INFO)
-    feed_info = pd.read_csv(feed_info_path)
+    feed_info = pd.read_csv(FEED_INFO)
     feed_info = feed_info.set_index('feedid')
     # 基于userid统计的历史行为的次数
     user_date_feature_path = os.path.join(ROOT_PATH, "feature", "userid_feature.csv")

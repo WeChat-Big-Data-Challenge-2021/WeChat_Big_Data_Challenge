@@ -2,6 +2,7 @@
 
 import os
 import time
+import numpy as np
 import pandas as pd
 import tensorflow.compat.v1 as tf
 from tensorflow import feature_column as fc
@@ -144,12 +145,15 @@ class WideAndDeep(object):
                                                                       day=STAGE_END_DAY[self.stage])
         submit_dir = os.path.join(FLAGS.root_path, self.stage, file_name)
         df = pd.read_csv(submit_dir)
+        t = time.time()
         predicts = self.estimator.predict(
             input_fn=lambda: self.input_fn_predict(df, self.stage, self.action)
         )
         predicts_df = pd.DataFrame.from_dict(predicts)
         logits = predicts_df["logistic"].map(lambda x: x[0])
-        return df[["userid", "feedid"]], logits
+        # 计算2000条样本平均预测耗时（毫秒）
+        ts = (time.time()-t)*1000.0/len(df)*2000.0
+        return df[["userid", "feedid"]], logits, ts
 
     
 
@@ -210,6 +214,7 @@ def main(argv):
     print('Stage: %s'%stage)
     eval_dict = {}
     predict_dict = {}
+    predict_time_cost = {}
     ids = None
     for action in ACTION_LIST:
         print("Action:", action)
@@ -230,7 +235,8 @@ def main(argv):
 
         if stage == "submit":
             # 预测线上测试集结果，保存预测结果
-            ids, logits = model.predict()
+            ids, logits, ts = model.predict()
+            predict_time_cost[action] = ts
             predict_dict[action] = logits
 
     if stage in ["evaluate", "offline_train", "online_train"]:
@@ -253,6 +259,12 @@ def main(argv):
         submit_file = os.path.join(FLAGS.root_path, stage, file_name)
         print('Save to: %s'%submit_file)
         res.to_csv(submit_file, index=False)
+
+    if stage == "submit":
+        print('不同目标行为2000条样本平均预测耗时（毫秒）：')
+        print(predict_time_cost)
+        print('单个目标行为2000条样本平均预测耗时（毫秒）：')
+        print(np.mean([v for v in predict_time_cost.values()]))
     print('Time cost: %.2f s'%(time.time()-t))
 
 
