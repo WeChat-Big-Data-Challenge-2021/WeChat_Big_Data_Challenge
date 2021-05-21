@@ -95,7 +95,7 @@ def statis_feature(start_day=1, before_day=7, agg='sum'):
         user_data = history_data[[dim, "date_"] + FEA_COLUMN_LIST]
         res_arr = []
         for start in range(start_day, END_DAY-before_day+1):
-            temp = user_data[(user_data["date_"]) >= start & (user_data["date_"] < (start + before_day))]
+            temp = user_data[((user_data["date_"]) >= start) & (user_data["date_"] < (start + before_day))]
             temp = temp.drop(columns=['date_'])
             temp = temp.groupby([dim]).agg([agg]).reset_index()
             temp.columns = list(map(''.join, temp.columns.values))
