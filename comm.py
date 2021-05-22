@@ -27,8 +27,9 @@ ACTION_LIST = ["read_comment", "like", "click_avatar",  "forward"]
 # ACTION_LIST = ["read_comment", "like", "click_avatar",  "forward", "comment", "follow", "favorite"]
 # 用于构造特征的字段列表
 FEA_COLUMN_LIST = ["read_comment", "like", "click_avatar",  "forward", "comment", "follow", "favorite"]
-# 负样本下采样比例(负样本:正样本)
-ACTION_SAMPLE_RATE = {"read_comment": 5, "like": 5, "click_avatar": 5, "forward": 10, "comment": 10, "follow": 10, "favorite": 10}
+# 每个行为的负样本下采样比例(下采样后负样本数/原负样本数)
+ACTION_SAMPLE_RATE = {"read_comment": 0.2, "like": 0.2, "click_avatar": 0.2, "forward": 0.1, "comment": 0.1, "follow": 0.1, "favorite": 0.1}
+
 # 各个阶段数据集的设置的最后一天
 STAGE_END_DAY = {"online_train": 14, "offline_train": 12, "evaluate": 13, "submit": 15}
 # 各个行为构造训练数据的天数
@@ -95,7 +96,7 @@ def statis_feature(start_day=1, before_day=7, agg='sum'):
         user_data = history_data[[dim, "date_"] + FEA_COLUMN_LIST]
         res_arr = []
         for start in range(start_day, END_DAY-before_day+1):
-            temp = user_data[(user_data["date_"]) >= start & (user_data["date_"] < (start + before_day))]
+            temp = user_data[((user_data["date_"]) >= start) & (user_data["date_"] < (start + before_day))]
             temp = temp.drop(columns=['date_'])
             temp = temp.groupby([dim]).agg([agg]).reset_index()
             temp.columns = list(map(''.join, temp.columns.values))
@@ -145,8 +146,9 @@ def generate_sample(stage="offline_train"):
         for action in ACTION_LIST:
             action_df = df[(df["date_"] <= day) & (df["date_"] >= day - ACTION_DAY_NUM[action] + 1)]
             df_neg = action_df[action_df[action] == 0]
-            df_neg = df_neg.sample(frac=1.0/ACTION_SAMPLE_RATE[action], random_state=SEED, replace=False)
-            df_all = pd.concat([df_neg, action_df[action_df[action] == 1]])
+            df_pos = action_df[action_df[action] == 1]
+            df_neg = df_neg.sample(frac=ACTION_SAMPLE_RATE[action], random_state=SEED, replace=False)
+            df_all = pd.concat([df_neg, df_pos])
             col = ["userid", "feedid", "date_", "device"] + [action]
             file_name = os.path.join(stage_dir, stage + "_" + action + "_" + str(day) + "_generate_sample.csv")
             print('Save to: %s'%file_name)
