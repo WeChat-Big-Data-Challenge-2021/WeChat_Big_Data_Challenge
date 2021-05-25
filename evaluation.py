@@ -2,13 +2,27 @@
 import time
 import traceback
 from collections import defaultdict
-import logging 
+import logging
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s" 
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT) 
 logger = logging.getLogger(__file__)
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score
+from numba import njit
+from scipy.stats import rankdata
+
+
+@njit
+def _auc(actual, pred_ranks):
+    n_pos = np.sum(actual)
+    n_neg = len(actual) - n_pos
+    return (np.sum(pred_ranks[actual == 1]) - n_pos*(n_pos+1)/2) / (n_pos*n_neg)
+
+
+def fast_auc(actual, predicted):
+    # https://www.kaggle.com/c/riiid-test-answer-prediction/discussion/208031
+    pred_ranks = rankdata(predicted)
+    return _auc(actual, pred_ranks)
 
 
 def uAUC(labels, preds, user_id_list):
@@ -37,7 +51,7 @@ def uAUC(labels, preds, user_id_list):
     size = 0.0
     for user_id in user_flag:
         if user_flag[user_id]:
-            auc = roc_auc_score(np.asarray(user_truth[user_id]), np.asarray(user_pred[user_id]))
+            auc = fast_auc(np.asarray(user_truth[user_id]), np.asarray(user_pred[user_id]))
             total_auc += auc 
             size += 1.0
     user_auc = float(total_auc)/size
