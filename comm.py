@@ -147,7 +147,7 @@ def generate_sample(stage="offline_train"):
             action_df = df[(df["date_"] <= day) & (df["date_"] >= day - ACTION_DAY_NUM[action] + 1)]
             df_neg = action_df[action_df[action] == 0]
             df_pos = action_df[action_df[action] == 1]
-            df_neg = df_neg.sample(frac=ACTION_SAMPLE_RATE[action], random_state=SEED, replace=False)
+            # df_neg = df_neg.sample(frac=ACTION_SAMPLE_RATE[action], random_state=SEED, replace=False)
             df_all = pd.concat([df_neg, df_pos])
             col = ["userid", "feedid", "date_", "device"] + [action]
             file_name = os.path.join(stage_dir, stage + "_" + action + "_" + str(day) + "_generate_sample.csv")
