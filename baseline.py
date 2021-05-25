@@ -11,13 +11,14 @@ from evaluation import uAUC, compute_weighted_score
 import sys
 from sklearn.model_selection import train_test_split
 import lightgbm as lgb
-from sklearn.metrics import auc
+from sklearn.model_selection import StratifiedKFold,KFold
+from copy import deepcopy
 model_checkpoint_dir = './data/model'
 
 SEED = 100
 
 class Lightgbm(object):
-    def __init__(self, stage, action):
+    def __init__(self, stage, action, k_fold):
         """
         :param linear_feature_columns: List of tensorflow feature_column
         :param dnn_feature_columns: List of tensorflow feature_column
@@ -30,8 +31,9 @@ class Lightgbm(object):
         self.bst = None
         self.stage = stage
         self.action = action
+        self.k_fold = k_fold
 
-    def pre_data(self, stage, action):
+    def pre_data(self):
         if self.stage in ["online_train", "offline_train"]:
             # 训练集，每个action一个文件
             action = self.action
@@ -58,12 +60,12 @@ class Lightgbm(object):
         else:
             X = np.array(df.drop(self.action, axis=1))
         
-        x_train, self.x_test, y_train, self.y_test = train_test_split(X, y, test_size=0.10, random_state=SEED)
-        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=SEED)
-        self.train_data = lgb.Dataset(data=x_train,label=y_train)
-        self.val_data = lgb.Dataset(data=x_val,label=y_val)
+        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(X, y, test_size=0.10, random_state=SEED)
+        
+        self.sfolder = KFold(n_splits=self.k_fold, random_state=SEED)
 
     def load_model(self):
+        self.model_list = []
         if self.stage in ["evaluate", "offline_train"]:
             stage = "offline_train"
         else:
@@ -76,7 +78,8 @@ class Lightgbm(object):
             # 训练时如果模型目录已存在，则清空目录
             del_file(self.model_checkpoint_stage_dir)
         else:
-            self.bst = lgb.Booster(model_file=os.path.join(self.model_checkpoint_stage_dir, 'model.txt'))
+            for i in range(self.k_fold):
+                self.model_list.append(lgb.Booster(model_file=os.path.join(self.model_checkpoint_stage_dir, 'model_' + str(i) + '.txt')))
 
     def train(self):
         """
@@ -85,10 +88,17 @@ class Lightgbm(object):
         param = {'num_leaves':31, 'num_trees':10, 'objective':'binary'}
         param['metric'] = 'binary_logloss'
         num_round = 10
-        # self.bst = lgb.cv(param, self.train_data, num_round, nfold=5)
-        self.bst = lgb.train(param, self.train_data, num_round, valid_sets=[self.val_data])
-        
-        self.bst.save_model(os.path.join(self.model_checkpoint_stage_dir, 'model.txt'), num_iteration=self.bst.best_iteration)
+        for index, (train_index, val_index) in enumerate(self.sfolder.split(self.x_train, self.y_train)):
+            x_train = self.x_train[train_index]
+            y_train = self.y_train[train_index]
+            x_val = self.x_train[val_index]
+            y_val = self.y_train[val_index]
+            train_data = lgb.Dataset(data=x_train,label=y_train)
+            val_data = lgb.Dataset(data=x_val,label=y_val)
+            bst = lgb.train(param, train_data, num_round, valid_sets=[val_data])
+            print(bst)
+            bst.save_model(os.path.join(self.model_checkpoint_stage_dir, 'model_' + str(index) + '.txt'), num_iteration=bst.best_iteration)
+            self.model_list.append(deepcopy(bst))
 
     def evaluate(self):
         """
@@ -105,18 +115,30 @@ class Lightgbm(object):
         evaluate_dir = os.path.join(ROOT_PATH, self.stage, file_name)
         df = pd.read_csv(evaluate_dir)
 
-        ypred = self.bst.predict(self.x_test, num_iteration=self.bst.best_iteration)
+        y_pred = []
+        for i in range(self.k_fold):
+            y_pred.append(self.model_list[i].predict(self.x_test, num_iteration=self.model_list[i].best_iteration))
+            # ypred = self.bst.predict(self.x_test, num_iteration=self.bst.best_iteration)
+        y_pred = np.array(y_pred)
+        y_pred = np.mean(y_pred, axis = 0)
 
         userid_list = df['userid'].astype(str).tolist()
-        uauc = uAUC(self.y_test, ypred, userid_list)
-        return ypred, uauc
+        uauc = uAUC(self.y_test, y_pred, userid_list)
+        return y_pred, uauc
     
     def predict(self):
         '''
         预测单个行为的发生概率
         '''
         t = time.time()
-        logits = self.bst.predict(self.x_test, num_iteration=self.bst.best_iteration)
+
+        y_pred = []
+        for i in range(self.k_fold):
+            y_pred.append(self.model_list[i].predict(self.x_test, num_iteration=self.model_list[i].best_iteration))
+        y_pred = np.array(y_pred)
+        logits = np.mean(y_pred, axis = 0)
+
+        # logits = self.bst.predict(self.x_test, num_iteration=self.bst.best_iteration)
         # 计算2000条样本平均预测耗时（毫秒）
         ts = (time.time()-t)*1000.0/len(self.id)*2000.0
         return self.id, logits, ts
@@ -145,8 +167,8 @@ def main():
     
     for action in ACTION_LIST:
         print("Action:", action)
-        model = Lightgbm(stage, action)
-        model.pre_data(stage, action)
+        model = Lightgbm(stage, action, 5)
+        model.pre_data()
         if stage in ["online_train", "offline_train"]:
             # 训练 并评估
             model.load_model()
